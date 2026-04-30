@@ -1,0 +1,9 @@
+[project]
+name = "yt-judge"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "faster-whisper>=1.2.1",
+    "youtube-transcript-api>=1.2.4",
+    "yt-dlp>=2026.3.17",
+]

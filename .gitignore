@@ -1,0 +1,24 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+dist/
+*.egg-info/
+
+# 快取內容（保留資料夾結構）
+cache/*
+!cache/.gitkeep
+
+# 環境與敏感檔案
+.env
+.env*
+*.env
+credentials.json
+token.json
+
+# 系統
+.DS_Store
+*.swp
+.idea/
+.vscode/
