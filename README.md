@@ -37,6 +37,28 @@ uv run transcript.py https://www.youtube.com/watch?v=VIDEO_ID
 
 Then hand the URL to Claude Code or your agent and start asking questions.
 
+## Search first
+
+Before fetching transcripts, you can ask the agent to search YouTube and review
+candidate videos:
+
+```bash
+uv run youtube_search.py "關鍵字" --limit 10
+```
+
+By default, results are printed as a Markdown table with title, channel, URL,
+duration, and view count. For agent workflows, use JSON:
+
+```bash
+uv run youtube_search.py "關鍵字" --limit 10 --format json
+```
+
+The intended workflow is:
+
+1. Search for candidate videos
+2. Let the agent decide which videos are worth analyzing
+3. Fetch transcripts only for selected videos with `transcript.py`
+
 ---
 
 ## Cache
