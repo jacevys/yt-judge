@@ -17,6 +17,10 @@ cache/*
 credentials.json
 token.json
 
+# AI 設定檔
+CLAUDE.md
+AGENTS.md
+
 # 系統
 .DS_Store
 *.swp
