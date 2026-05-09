@@ -2,9 +2,9 @@
 
 Too many takes, not enough time. Let the AI watch, read, and decide who actually makes sense.
 
-A lightweight tool for Claude Code (or any agentic AI) to fetch YouTube transcripts and compare what multiple YouTubers said — then let the AI judge who makes more sense.
+A lightweight tool for Claude Code (or any agentic AI) to fetch YouTube transcripts and Threads posts, compare what creators and the public actually said — then let the AI judge who makes sense.
 
-用 Claude Code 或任何 Agent AI 抓取 YouTube 逐字稿，分析比較多位 YouTuber 的論點，判斷誰比較有道理。
+用 Claude Code 或任何 Agent AI 抓取 YouTube 逐字稿與 Threads 公開貼文，交叉分析創作者論點與民間輿論，判斷誰比較有道理。
 
 ---
 
@@ -61,14 +61,61 @@ The intended workflow is:
 
 ---
 
+## Threads
+
+Search public Threads posts and fetch full threads (original post + replies) for analysis alongside YouTube transcripts.
+
+**First-time setup — save a login session:**
+
+```bash
+uv run threads_search.py --login
+```
+
+This opens a browser window. Log in manually, then press Enter. The session is saved locally and reused on every subsequent run.
+
+**Search posts:**
+
+```bash
+uv run threads_search.py "關鍵字" --limit 10
+```
+
+**Search and batch-fetch full threads (post + replies):**
+
+```bash
+uv run threads_search.py "關鍵字" --fetch-all --topic 護病比 --posts 10 --reply-limit 20
+```
+
+Fetched threads are cached under `cache/threads/<topic><date>/<post_id>.md`. Repeat runs read from cache instantly.
+
+**Fetch a single post by URL:**
+
+```bash
+uv run threads_search.py --fetch "https://www.threads.com/@user/post/..." --reply-limit 20
+```
+
+**Options:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--limit` | 10 | Number of search results (search-only mode) |
+| `--posts` | 5 | Number of posts to fetch in `--fetch-all` mode |
+| `--reply-limit` | 20 | Max replies per post |
+| `--scroll-rounds` | 10 | Scroll depth on search page |
+| `--topic` | _(empty)_ | Subfolder name under `cache/threads/` |
+| `--format` | markdown | Output format: `markdown` or `json` |
+
+---
+
 ## Cache
 
-Each fetched video is saved to `cache/<video_id>.md` and includes:
+Each fetched video is saved to `cache/youtube/<video_id>.md` and includes:
 
 - Title, channel, upload date, duration, URL
 - Full transcript text
 
 On subsequent runs, the script detects the cache file and skips all network and Whisper processing — the agent reads the local file directly.
+
+**YouTube** — `cache/youtube/<video_id>.md`:
 
 ```
 標題：...
@@ -77,6 +124,23 @@ On subsequent runs, the script detects the cache file and skips all network and 
 網址：https://www.youtube.com/watch?v=...
 ────────────────────────────────────────
 transcript content...
+```
+
+**Threads** — `cache/threads/<topic><date>/<post_id>.md`:
+
+```
+作者：@username
+時間：2025-01-01　讚：123　回覆數：45
+網址：https://www.threads.com/@username/post/...
+────────────────────────────────────────
+【原帖】
+post content...
+
+────────────────────────────────────────
+【回覆】前 20 則
+
+[1] @reply_user　2025-01-01　讚: 10
+reply content...
 ```
 
 ---
@@ -94,6 +158,7 @@ transcript content...
 | `youtube-transcript-api` | Fetch built-in YouTube subtitles |
 | `yt-dlp` | Video metadata + audio download for Whisper |
 | `faster-whisper` | Local speech-to-text when subtitles are unavailable |
+| `playwright` | Headless browser for Threads scraping |
 
 ---
 
