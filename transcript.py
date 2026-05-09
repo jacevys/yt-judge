@@ -5,13 +5,25 @@
 import sys
 import re
 import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 
-CACHE_DIR = Path(__file__).parent / "cache"
+CACHE_DIR = Path(__file__).parent / "cache" / "youtube"
 WHISPER_MODEL = "small"  # tiny / base / small / medium / large-v3
+
+_video_locks: dict[str, threading.Lock] = {}
+_locks_mutex = threading.Lock()
+
+
+def _get_video_lock(video_id: str) -> threading.Lock:
+    with _locks_mutex:
+        if video_id not in _video_locks:
+            _video_locks[video_id] = threading.Lock()
+        return _video_locks[video_id]
 
 
 def extract_video_id(url_or_id: str) -> str:
@@ -96,45 +108,68 @@ def get_transcript(url_or_id: str) -> str:
         print(f"[快取] 直接讀取 {cache_file.name}", file=sys.stderr)
         return cache_file.read_text(encoding="utf-8")
 
-    full_url = f"https://www.youtube.com/watch?v={video_id}"
-    print(f"[抓取中] {full_url}", file=sys.stderr)
+    with _get_video_lock(video_id):
+        # 再次確認，避免等 lock 時另一線程已完成
+        if cache_file.exists():
+            print(f"[快取] 直接讀取 {cache_file.name}", file=sys.stderr)
+            return cache_file.read_text(encoding="utf-8")
 
-    meta = fetch_metadata(full_url)
-    date = meta["upload_date"]
-    date_str = f"{date[:4]}-{date[4:6]}-{date[6:]}" if len(date) == 8 else date
+        full_url = f"https://www.youtube.com/watch?v={video_id}"
+        print(f"[抓取中] {full_url}", file=sys.stderr)
 
-    header = (
-        f"標題：{meta['title']}\n"
-        f"頻道：{meta['channel']}\n"
-        f"日期：{date_str}　時長：{format_duration(meta['duration'])}\n"
-        f"網址：{full_url}\n"
-        f"{'─' * 40}\n"
-    )
+        meta = fetch_metadata(full_url)
+        date = meta["upload_date"]
+        date_str = f"{date[:4]}-{date[4:6]}-{date[6:]}" if len(date) == 8 else date
 
-    # 優先用 YouTube 字幕，失敗才用 Whisper
-    try:
-        print("[字幕] 嘗試抓取 YouTube 字幕...", file=sys.stderr)
-        text = fetch_transcript_from_youtube(video_id)
-        print("[字幕] 成功", file=sys.stderr)
-    except (TranscriptsDisabled, NoTranscriptFound, Exception) as e:
-        print(f"[字幕] 無字幕（{type(e).__name__}），改用 Whisper", file=sys.stderr)
-        text = fetch_transcript_via_whisper(full_url)
+        header = (
+            f"標題：{meta['title']}\n"
+            f"頻道：{meta['channel']}\n"
+            f"日期：{date_str}　時長：{format_duration(meta['duration'])}\n"
+            f"網址：{full_url}\n"
+            f"{'─' * 40}\n"
+        )
 
-    full_output = header + text
-    CACHE_DIR.mkdir(exist_ok=True)
-    cache_file.write_text(full_output, encoding="utf-8")
-    print(f"[已快取] {cache_file}", file=sys.stderr)
+        # 優先用 YouTube 字幕，失敗才用 Whisper
+        try:
+            print("[字幕] 嘗試抓取 YouTube 字幕...", file=sys.stderr)
+            text = fetch_transcript_from_youtube(video_id)
+            print("[字幕] 成功", file=sys.stderr)
+        except (TranscriptsDisabled, NoTranscriptFound, Exception) as e:
+            print(f"[字幕] 無字幕（{type(e).__name__}），改用 Whisper", file=sys.stderr)
+            text = fetch_transcript_via_whisper(full_url)
+
+        full_output = header + text
+        CACHE_DIR.mkdir(exist_ok=True)
+        cache_file.write_text(full_output, encoding="utf-8")
+        print(f"[已快取] {cache_file}", file=sys.stderr)
 
     return full_output
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("用法：uv run transcript.py <YouTube URL 或 video ID>")
+    urls = sys.argv[1:]
+    if not urls:
+        print("用法：uv run transcript.py <URL1> [URL2] ...")
         sys.exit(1)
 
-    result = get_transcript(sys.argv[1])
-    print(result)
+    if len(urls) == 1:
+        print(get_transcript(urls[0]))
+        return
+
+    results: list[str | None] = [None] * len(urls)
+    max_workers = min(len(urls), 5)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_idx = {executor.submit(get_transcript, url): i for i, url in enumerate(urls)}
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            try:
+                results[idx] = future.result()
+            except Exception as e:
+                results[idx] = f"[錯誤] {urls[idx]}\n{e}"
+
+    sep = "\n" + "═" * 60 + "\n"
+    print(sep.join(results))  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":
